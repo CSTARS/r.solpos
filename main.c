@@ -31,14 +31,41 @@ void set_solpos_time(struct posdata *, int, int, int, int, int, int);
 void set_solpos_longitude(struct posdata *, double );
 int roundoff(double *);
 
+static void print_report(struct posdata *pdat) {
+
+  fprintf(stdout, "date=%d-%02d-%02d\ndaynum=%d\ntime=%02i:%02i:%02i\ntimezone=%f\n",
+	  pdat->year, pdat->month, pdat->day, pdat->daynum,
+	  pdat->hour, pdat->minute, pdat->second,pdat->timezone
+	  );
+  fprintf(stdout, "longitude=%f\nlatitude=%f\ndayang=%f\ndeclin=%f\neqntim=%f\ncosinc=%f\netr=%f\netrn=%f\netrtilt=%f\nazim=%f\nelevref=%f\nsretr=%f\nssetr=%f\nssha=%f\ntst=%f\ntstfix=%f\n", 	
+	  pdat->longitude, pdat->latitude,
+	  pdat->dayang, pdat->declin,
+	  pdat->eqntim, pdat->cosinc,
+	  pdat->etr,  pdat->etrn,
+	  pdat->etrtilt,
+	  pdat->azim,           // sun azimuth
+	  pdat->elevref,        // sun angle above horz.(refraction corrected
+	  pdat->sretr,          // Sunrise time, minutes (without refraction)
+	  pdat->ssetr,          // Sunset time, minutes  (without refraction)
+	  pdat->ssha,            // sunshine hour angle
+	  pdat->tst,		 // True solar time
+	  pdat->tstfix		 // True solar time
+	  );
+  fprintf(stderr, "sretr_hh_mm=%02.0f:%02.0f\nssetr_hh_mm=%02.0f:%02.0f\n", 
+	  floor(pdat->sretr/60.), fmod(pdat->sretr, 60.), 
+	  floor(pdat->ssetr/60.), fmod(pdat->ssetr, 60.)
+	  );
+}
+
 int main(int argc, char *argv[])
 {
     struct GModule *module;
     struct
     {
       struct Option *elev, *azimuth, *sretr, *ssetr, *hrang, *sunhours, *year,
-	    *month, *day, *hour, *minutes, *seconds;
+	*month, *day, *hour, *minutes, *seconds; 
     } parm;
+    struct Flag *report_flag;
     struct Cell_head window;
     FCELL *elevbuf, *azimuthbuf, *sretrbuf, *ssetrbuf, *hrangbuf,  *sunhourbuf;
     struct History hist;
@@ -53,6 +80,7 @@ int main(int argc, char *argv[])
     double east, east_ll, north, north_ll;
     double north_gc, north_gc_sin, north_gc_cos;  /* geocentric latitude */
     double ba2;
+    int report;
     int year, month, day, hour, minutes, seconds;
     int doy;   					/* day of year */
     int row, col, nrows, ncols;
@@ -157,19 +185,39 @@ int main(int argc, char *argv[])
     parm.seconds->answer = "0";
     parm.seconds->guisection = _("Time");
 
+    /*
+   parm.east = G_define_option();
+    parm.east->key = "east";
+    parm.east->type = TYPE_FLOAT;
+    parm.east->required = NO;
+    parm.east->description = _("Report Easting (Default region center)");
+
+    parm.north = G_define_option();
+    parm.north->key = "north";
+    parm.north->type = TYPE_FLOAT;
+    parm.north->required = NO;
+    parm.north->description = _("Report Northing (Default region center)");
+    */
+    
+    report_flag = G_define_flag();
+    report_flag->key = 'r';
+    report_flag->description = _("Report solpos parameters for region center");
+
+
     if (G_parser(argc, argv))
-	exit(EXIT_FAILURE);
+      exit(EXIT_FAILURE);
 
     G_get_window(&window);
 
-    /* require at least one output */
+    /* require at least one output or report */
+    report=report_flag->answer;
     elev_name = parm.elev->answer;
     azimuth_name = parm.azimuth->answer;
     sretr_name = parm.sretr->answer;
     ssetr_name = parm.ssetr->answer;
     hrang_name = parm.hrang->answer;
     sunhour_name = parm.sunhours->answer;
-    if (!elev_name && !azimuth_name && !sretr_name && !ssetr_name && !sunhour_name)
+    if (!report && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !sunhour_name)
 	G_fatal_error(_("No output requested, exiting."));
 
     year = atoi(parm.year->answer);
@@ -211,17 +259,11 @@ int main(int argc, char *argv[])
 	oproj.meters = 1.;
 	sprintf(oproj.proj, "ll");
 	if ((oproj.pj = pj_latlong_from_proj(iproj.pj)) == NULL)
-	    G_fatal_error(_("Unable to update lat/long projection parameters"));
+	  G_fatal_error(_("Unable to update lat/long projection parameters"));
     }
 
     /* always init pd */
     S_init(&pd);
-    pd.function = S_GEOM;
-    pd.function = S_ZENETR;
-    if (azimuth_name)
-      pd.function = S_SOLAZM;
-    if (sunhour_name || sretr_name || ssetr_name || hrang_name )
-      pd.function |= S_SRSS;
 
     if (month == -1)
 	doy = day;
@@ -231,6 +273,50 @@ int main(int argc, char *argv[])
     set_solpos_time(&pd, year, 1, doy, hour, minutes, seconds);
     set_solpos_longitude(&pd, 0);
     pd.latitude = 0;
+
+    ba2 = 6356752.3142 / 6378137.0;
+    ba2 = ba2 * ba2;
+    
+    if (report) {
+      long int retval;
+
+      pd.function = S_ALL;
+
+      east =  (double) (window.west + window.east) / 2;
+      north = (double) (window.north + window.south) / 2;
+      east_ll = east;
+      
+      if (do_reproj) {
+	north_ll = north;
+	
+	if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
+	  G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
+      }
+      
+      /* geocentric latitude */
+      north_gc = atan(ba2 * tan(DEG2RAD * north_ll));
+      north_gc_sin = sin(north_gc);
+      roundoff(&north_gc_sin);
+      north_gc_cos = cos(north_gc);
+      roundoff(&north_gc_cos);
+      
+      set_solpos_longitude(&pd, east_ll);
+      pd.latitude = north_gc * RAD2DEG;
+      retval = S_solpos(&pd);
+      S_decode(retval, &pd);
+      print_report(&pd);
+    }
+
+    if (!elev_name && !azimuth_name && !sretr_name && !ssetr_name && !sunhour_name)
+	return 0;
+    
+    pd.function = S_GEOM;
+    pd.function = S_ZENETR;
+    if (azimuth_name)
+      pd.function = S_SOLAZM;
+    if (sunhour_name || sretr_name || ssetr_name || hrang_name )
+      pd.function |= S_SRSS;
+
     S_solpos(&pd);
 
     if (elev_name) {
@@ -311,9 +397,6 @@ int main(int argc, char *argv[])
 
     nrows = Rast_window_rows();
     ncols = Rast_window_cols();
-
-    ba2 = 6356752.3142 / 6378137.0;
-    ba2 = ba2 * ba2;
 
     for (row = 0; row < nrows; row++) {
 
