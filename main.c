@@ -27,7 +27,7 @@
 #include <grass/glocale.h>
 #include "solpos00.h"
 
-void set_solpos_time(struct posdata *, int, int, int, int, int, int);
+void set_solpos_time(struct posdata *, int, int, int, int, int, int, int);
 void set_solpos_longitude(struct posdata *, double );
 int roundoff(double *);
 
@@ -62,12 +62,12 @@ int main(int argc, char *argv[])
     struct GModule *module;
     struct
     {
-      struct Option *elev, *azimuth, *sretr, *ssetr, *hrang, *sunhours, *year,
-	*month, *day, *hour, *minutes, *seconds; 
+      struct Option *latitude, *elev, *azimuth, *sretr, *ssetr, *hrang, *ssha, *sunhours, *year,
+	*month, *day, *hour, *minutes, *seconds, *timezone; 
     } parm;
     struct Flag *report_flag;
     struct Cell_head window;
-    FCELL *elevbuf, *azimuthbuf, *sretrbuf, *ssetrbuf, *hrangbuf,  *sunhourbuf;
+    FCELL *latitudebuf, *elevbuf, *azimuthbuf, *sretrbuf, *ssetrbuf, *hrangbuf, *sshabuf, *sunhourbuf;
     struct History hist;
 
     /* projection information of input map */
@@ -75,13 +75,13 @@ int main(int argc, char *argv[])
     struct pj_info iproj;	/* input map proj parameters  */
     struct pj_info oproj;	/* output map proj parameters  */
 
-    char *elev_name, *azimuth_name, *sretr_name, *ssetr_name, *hrang_name, *sunhour_name;
-    int elev_fd, azimuth_fd, sretr_fd, ssetr_fd, hrang_fd, sunhour_fd;
+    char *latitude_name, *elev_name, *azimuth_name, *sretr_name, *ssetr_name, *hrang_name, *ssha_name, *sunhour_name;
+    int latitude_fd, elev_fd, azimuth_fd, sretr_fd, ssetr_fd, hrang_fd, ssha_fd,sunhour_fd;
     double east, east_ll, north, north_ll;
     double north_gc, north_gc_sin, north_gc_cos;  /* geocentric latitude */
     double ba2;
     int report;
-    int year, month, day, hour, minutes, seconds;
+    int year, month, day, hour, minutes, seconds, timezone;
     int doy;   					/* day of year */
     int row, col, nrows, ncols;
     int do_reproj = 0;
@@ -99,6 +99,11 @@ int main(int argc, char *argv[])
 			    "of the sun's apparent disk and the (idealized) horizon. "
 			    "Solar azimuth: the angle from due north in clockwise direction.");
     
+    parm.latitude = G_define_standard_option(G_OPT_R_OUTPUT);
+    parm.latitude->key = "latitude";
+    parm.latitude->label = _("Output raster map with geocentric latitude");
+    parm.latitude->required = NO;
+
     parm.elev = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.elev->key = "elevation";
     parm.elev->label = _("Output raster map with solar elevation angle");
@@ -112,25 +117,26 @@ int main(int argc, char *argv[])
     parm.sretr = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.sretr->key = "sretr";
     parm.sretr->label = _("Output raster map with sunrise time, minutes from midnight");
-    parm.sretr->description = _("Sunrise hour requires SOLPOS use and Greenwich standard time");
     parm.sretr->required = NO;
 
     parm.ssetr = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.ssetr->key = "ssetr";
     parm.ssetr->label = _("Output raster map with sunset time, minutes from midnight");
-    parm.ssetr->description = _("Sunset hour requires SOLPOS use and Greenwich standard time");
     parm.ssetr->required = NO;
 
     parm.hrang = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.hrang->key = "hrang";
     parm.hrang->label = _("Output raster map with hour angle--hour of sun from solar noon, degrees WEST");
-    parm.hrang->description = _("Hour angle requires SOLPOS use and Greenwich standard time");
     parm.hrang->required = NO;
+
+    parm.ssha = G_define_standard_option(G_OPT_R_OUTPUT);
+    parm.ssha->key = "ssha";
+    parm.ssha->label = _("Output raster map with sunshine hour angle");
+    parm.ssha->required = NO;
 
     parm.sunhours = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.sunhours->key = "sunhour";
     parm.sunhours->label = _("Output raster map with sunshine hours");
-    parm.sunhours->description = _("Sunshine hours require SOLPOS use and Greenwich standard time");
     parm.sunhours->required = NO;
 
     parm.year = G_define_option();
@@ -185,6 +191,15 @@ int main(int argc, char *argv[])
     parm.seconds->answer = "0";
     parm.seconds->guisection = _("Time");
 
+    parm.timezone = G_define_option();
+    parm.timezone->key = "timezone";
+    parm.timezone->type = TYPE_INTEGER;
+    parm.timezone->required = NO;
+    parm.timezone->description = _("Timezone");
+    parm.timezone->options = "-12-12";
+    parm.timezone->answer = "0";
+    parm.timezone->guisection = _("Time");
+
     /*
    parm.east = G_define_option();
     parm.east->key = "east";
@@ -211,13 +226,15 @@ int main(int argc, char *argv[])
 
     /* require at least one output or report */
     report=report_flag->answer;
+    latitude_name = parm.latitude->answer;
     elev_name = parm.elev->answer;
     azimuth_name = parm.azimuth->answer;
     sretr_name = parm.sretr->answer;
     ssetr_name = parm.ssetr->answer;
     hrang_name = parm.hrang->answer;
+    ssha_name = parm.ssha->answer;
     sunhour_name = parm.sunhours->answer;
-    if (!report && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !sunhour_name)
+    if (!report && !latitude_name && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !hrang_name  && !ssha_name && !sunhour_name)
 	G_fatal_error(_("No output requested, exiting."));
 
     year = atoi(parm.year->answer);
@@ -230,6 +247,7 @@ int main(int argc, char *argv[])
     hour = atoi(parm.hour->answer);
     minutes = atoi(parm.minutes->answer);
     seconds = atoi(parm.seconds->answer);
+    timezone = atoi(parm.timezone->answer);
 
     /* init variables */
     north_gc_cos = 0;
@@ -270,7 +288,7 @@ int main(int argc, char *argv[])
     else
 	doy = dom2doy2(year, month, day);
     
-    set_solpos_time(&pd, year, 1, doy, hour, minutes, seconds);
+    set_solpos_time(&pd, year, 1, doy, hour, minutes, seconds, timezone);
     set_solpos_longitude(&pd, 0);
     pd.latitude = 0;
 
@@ -307,17 +325,28 @@ int main(int argc, char *argv[])
       print_report(&pd);
     }
 
-    if (!elev_name && !azimuth_name && !sretr_name && !ssetr_name && !sunhour_name)
+    if (!latitude_name && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !ssha_name && !hrang_name && !sunhour_name)
 	return 0;
     
     pd.function = S_GEOM;
     pd.function = S_ZENETR;
-    if (azimuth_name)
+    if (azimuth_name || ssha_name)
       pd.function = S_SOLAZM;
-    if (sunhour_name || sretr_name || ssetr_name || hrang_name )
+    if (ssha_name || sunhour_name || sretr_name || ssetr_name || hrang_name )
       pd.function |= S_SRSS;
 
     S_solpos(&pd);
+
+    if (latitude_name) {
+	if ((latitude_fd = Rast_open_new(latitude_name, FCELL_TYPE)) < 0)
+	    G_fatal_error(_("Unable to create raster map <%s>"), latitude_name);
+
+	latitudebuf = Rast_allocate_f_buf();
+    }
+    else {
+	latitudebuf = NULL;
+	latitude_fd = -1;
+    }
 
     if (elev_name) {
 	if ((elev_fd = Rast_open_new(elev_name, FCELL_TYPE)) < 0)
@@ -372,6 +401,17 @@ int main(int argc, char *argv[])
     else {
 	hrangbuf = NULL;
 	hrang_fd = -1;
+    }
+
+    if (ssha_name) {
+      if ((ssha_fd = Rast_open_new(ssha_name, FCELL_TYPE)) < 0)
+	    G_fatal_error(_("Unable to create raster map <%s>"), ssha_name);
+
+	sshabuf = Rast_allocate_f_buf();
+    }
+    else {
+	sshabuf = NULL;
+	ssha_fd = -1;
     }
 
     if (sunhour_name) {
@@ -433,6 +473,9 @@ int main(int argc, char *argv[])
 	    S_decode(retval, &pd);
 	    G_debug(3, "solpos hour angle: %.5f", pd.hrang);
 
+	    if (latitude_name)
+		latitudebuf[col] = pd.latitude;
+
 	    if (elev_name)
 		elevbuf[col] = pd.elevetr;
 
@@ -449,7 +492,11 @@ int main(int argc, char *argv[])
 	    }
 
 	    if (hrang_name) {
-	      ssetrbuf[col] = pd.hrang;
+	      hrangbuf[col] = pd.hrang;
+	    }
+
+	    if (ssha_name) {
+	      sshabuf[col] = pd.ssha;
 	    }
 
 	    if (sunhour_name) {
@@ -460,6 +507,8 @@ int main(int argc, char *argv[])
 		    sunhourbuf[col] = 0.;
 	    }
 	}
+	if (latitude_name)
+	    Rast_put_f_row(latitude_fd, latitudebuf);
 	if (elev_name)
 	    Rast_put_f_row(elev_fd, elevbuf);
 	if (azimuth_name)
@@ -470,11 +519,20 @@ int main(int argc, char *argv[])
 	    Rast_put_f_row(ssetr_fd, ssetrbuf);
 	if (hrang_name)
 	    Rast_put_f_row(hrang_fd, hrangbuf);
+	if (ssha_name)
+	    Rast_put_f_row(ssha_fd, sshabuf);
 	if (sunhour_name)
 	    Rast_put_f_row(sunhour_fd, sunhourbuf);
     }
     G_percent(1, 1, 2);
 
+    if (latitude_name) {
+	Rast_close(latitude_fd);
+	/* writing history file */
+	Rast_short_history(latitude_name, "raster", &hist);
+	Rast_command_history(&hist);
+	Rast_write_history(latitude_name, &hist);
+    }
     if (elev_name) {
 	Rast_close(elev_fd);
 	/* writing history file */
@@ -510,6 +568,13 @@ int main(int argc, char *argv[])
 	Rast_command_history(&hist);
 	Rast_write_history(hrang_name, &hist);
     }
+    if (ssha_name) {
+	Rast_close(ssha_fd);
+	/* writing history file */
+	Rast_short_history(ssha_name, "raster", &hist);
+	Rast_command_history(&hist);
+	Rast_write_history(ssha_name, &hist);
+    }
     if (sunhour_name) {
 	Rast_close(sunhour_fd);
 	/* writing history file */
@@ -524,7 +589,7 @@ int main(int argc, char *argv[])
 }
 
 void set_solpos_time(struct posdata *pdat, int year, int month, int day,
-                    int hour, int minute, int second)
+		     int hour, int minute, int second, int timezone)
 {
     pdat->year = year; 
     pdat->month = month; 
@@ -533,7 +598,7 @@ void set_solpos_time(struct posdata *pdat, int year, int month, int day,
     pdat->hour = hour; 
     pdat->minute = minute; 
     pdat->second = second;
-    pdat->timezone = 0;
+    pdat->timezone = timezone;
 
     pdat->time_updated = 1; 
     pdat->longitude_updated = 1;
