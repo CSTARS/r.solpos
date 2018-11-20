@@ -3,7 +3,7 @@
  *
  * MODULE:       r.solpos
  * AUTHOR(S):    Quinn Hart
- * PURPOSE:      Borrowed heavily from r.sunhours, this application computes, NRELs solpos on 
+ * PURPOSE:      Borrowed heavily from r.sunhours, this application computes, NRELs solpos on
  *               a raster, and can provide solar azimuth, angle, sunshine hours, sunrise/sunset time,
  *               and an instantaneous sun angle.
  *               Uses NREL SOLPOS
@@ -37,7 +37,7 @@ static void print_report(struct posdata *pdat) {
 	  pdat->year, pdat->month, pdat->day, pdat->daynum,
 	  pdat->hour, pdat->minute, pdat->second,pdat->timezone
 	  );
-  fprintf(stdout, "longitude=%f\nlatitude=%f\ndayang=%f\ndeclin=%f\neqntim=%f\ncosinc=%f\netr=%f\netrn=%f\netrtilt=%f\nazim=%f\nelevref=%f\nsretr=%f\nssetr=%f\nssha=%f\ntst=%f\ntstfix=%f\n", 	
+  fprintf(stdout, "longitude=%f\nlatitude=%f\ndayang=%f\ndeclin=%f\neqntim=%f\ncosinc=%f\netr=%f\netrn=%f\netrtilt=%f\nazim=%f\nelevref=%f\nsretr=%f\nssetr=%f\nssha=%f\ntst=%f\ntstfix=%f\n",
 	  pdat->longitude, pdat->latitude,
 	  pdat->dayang, pdat->declin,
 	  pdat->eqntim, pdat->cosinc,
@@ -51,8 +51,8 @@ static void print_report(struct posdata *pdat) {
 	  pdat->tst,		 // True solar time
 	  pdat->tstfix		 // True solar time
 	  );
-  fprintf(stderr, "sretr_hh_mm=%02.0f:%02.0f\nssetr_hh_mm=%02.0f:%02.0f\n", 
-	  floor(pdat->sretr/60.), fmod(pdat->sretr, 60.), 
+  fprintf(stdout, "sretr_hhmm=%02.0f:%02.0f\nssetr_hhmm=%02.0f:%02.0f\n",
+	  floor(pdat->sretr/60.), fmod(pdat->sretr, 60.),
 	  floor(pdat->ssetr/60.), fmod(pdat->ssetr, 60.)
 	  );
 }
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     struct
     {
       struct Option *latitude, *elev, *azimuth, *sretr, *ssetr, *hrang, *ssha, *sunhours, *year,
-	*month, *day, *hour, *minutes, *seconds, *timezone; 
+	*month, *day, *hour, *minutes, *seconds, *timezone;
     } parm;
     struct Flag *report_flag;
     struct Cell_head window;
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     module->description = _("Solar elevation: the angle between the direction of the geometric center "
 			    "of the sun's apparent disk and the (idealized) horizon. "
 			    "Solar azimuth: the angle from due north in clockwise direction.");
-    
+
     parm.latitude = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.latitude->key = "latitude";
     parm.latitude->label = _("Output raster map with geocentric latitude");
@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
     parm.azimuth->key = "azimuth";
     parm.azimuth->label = _("Output raster map with solar azimuth angle");
     parm.azimuth->required = NO;
-    
+
     parm.sretr = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.sretr->key = "sretr";
     parm.sretr->label = _("Output raster map with sunrise time, minutes from midnight");
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
     parm.north->required = NO;
     parm.north->description = _("Report Northing (Default region center)");
     */
-    
+
     report_flag = G_define_flag();
     report_flag->key = 'r';
     report_flag->description = _("Report solpos parameters for region center");
@@ -287,14 +287,14 @@ int main(int argc, char *argv[])
 	doy = day;
     else
 	doy = dom2doy2(year, month, day);
-    
+
     set_solpos_time(&pd, year, 1, doy, hour, minutes, seconds, timezone);
     set_solpos_longitude(&pd, 0);
     pd.latitude = 0;
 
     ba2 = 6356752.3142 / 6378137.0;
     ba2 = ba2 * ba2;
-    
+
     if (report) {
       long int retval;
 
@@ -303,21 +303,21 @@ int main(int argc, char *argv[])
       east =  (double) (window.west + window.east) / 2;
       north = (double) (window.north + window.south) / 2;
       east_ll = east;
-      
+
       if (do_reproj) {
 	north_ll = north;
-	
+
 	if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
 	  G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
       }
-      
+
       /* geocentric latitude */
       north_gc = atan(ba2 * tan(DEG2RAD * north_ll));
       north_gc_sin = sin(north_gc);
       roundoff(&north_gc_sin);
       north_gc_cos = cos(north_gc);
       roundoff(&north_gc_cos);
-      
+
       set_solpos_longitude(&pd, east_ll);
       pd.latitude = north_gc * RAD2DEG;
       retval = S_solpos(&pd);
@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
 
     if (!latitude_name && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !ssha_name && !hrang_name && !sunhour_name)
 	return 0;
-    
+
     pd.function = S_GEOM;
     pd.function = S_ZENETR;
     if (azimuth_name || ssha_name)
@@ -441,7 +441,7 @@ int main(int argc, char *argv[])
     for (row = 0; row < nrows; row++) {
 
 	G_percent(row, nrows, 2);
-	
+
 	/* get cell center northing */
 	north = window.north - (row + 0.5) * window.ns_res;
 	north_ll = north;
@@ -480,7 +480,7 @@ int main(int argc, char *argv[])
 		elevbuf[col] = pd.elevetr;
 
 	    if (azimuth_name) {
-	      azimuthbuf[col] = pd.azim; 
+	      azimuthbuf[col] = pd.azim;
 	    }
 
 	    if (sretr_name) {
@@ -583,7 +583,7 @@ int main(int argc, char *argv[])
 	Rast_write_history(sunhour_name, &hist);
     }
 
-    G_done_msg(" ");
+    //    G_done_msg(" ");
 
     exit(EXIT_SUCCESS);
 }
@@ -591,16 +591,16 @@ int main(int argc, char *argv[])
 void set_solpos_time(struct posdata *pdat, int year, int month, int day,
 		     int hour, int minute, int second, int timezone)
 {
-    pdat->year = year; 
-    pdat->month = month; 
-    pdat->day = day; 
-    pdat->daynum = day; 
-    pdat->hour = hour; 
-    pdat->minute = minute; 
+    pdat->year = year;
+    pdat->month = month;
+    pdat->day = day;
+    pdat->daynum = day;
+    pdat->hour = hour;
+    pdat->minute = minute;
     pdat->second = second;
     pdat->timezone = timezone;
 
-    pdat->time_updated = 1; 
+    pdat->time_updated = 1;
     pdat->longitude_updated = 1;
 }
 
@@ -625,4 +625,3 @@ int roundoff(double *x)
 
     return 0;
 }
-
