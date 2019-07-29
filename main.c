@@ -52,8 +52,8 @@ static void print_report(struct posdata *pdat) {
 	  pdat->tstfix		 // True solar time
 	  );
   fprintf(stdout, "sretr_hhmm=%02.0f:%02.0f\nssetr_hhmm=%02.0f:%02.0f\n",
-	  floor(pdat->sretr/60.), fmod(pdat->sretr, 60.),
-	  floor(pdat->ssetr/60.), fmod(pdat->ssetr, 60.)
+	  floor(pdat->sretr/60.), floor(fmod(pdat->sretr, 60.)),
+	  floor(pdat->ssetr/60.), floor(fmod(pdat->ssetr, 60.))
 	  );
 }
 
