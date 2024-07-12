@@ -60,29 +60,27 @@ static void print_report(struct posdata *pdat) {
 int main(int argc, char *argv[])
 {
     struct GModule *module;
-    struct
-    {
-      struct Option *latitude, *elev, *azimuth, *sretr, *ssetr, *hrang, *ssha, *sunhours, *year,
-	*month, *day, *hour, *minutes, *seconds, *timezone;
+    struct {
+      struct Option *latitude, *elev, *azimuth, *sretr, *ssetr, *hrang, *ssha, *sunhours, *year, *month, *day, *hour, *minutes, *seconds, *timezone;
+      struct Flag *report_flag;
     } parm;
-    struct Flag *report_flag;
     struct Cell_head window;
     FCELL *latitudebuf, *elevbuf, *azimuthbuf, *sretrbuf, *ssetrbuf, *hrangbuf, *sshabuf, *sunhourbuf;
     struct History hist;
 
     /* projection information of input map */
     struct Key_Value *in_proj_info, *in_unit_info;
-    struct pj_info iproj;	/* input map proj parameters  */
-    struct pj_info oproj;	/* output map proj parameters  */
-
-    char *latitude_name, *elev_name, *azimuth_name, *sretr_name, *ssetr_name, *hrang_name, *ssha_name, *sunhour_name;
-    int latitude_fd, elev_fd, azimuth_fd, sretr_fd, ssetr_fd, hrang_fd, ssha_fd,sunhour_fd;
+    struct pj_info iproj; /* input map proj parameters  */
+    struct pj_info oproj; /* output map proj parameters  */
+    struct pj_info tproj; /* transformation parameters  */
+    char *latitude_name, *elev_name, *azimuth_name, *sretr_name, *ssetr_name, *ssha_name, *hrang_name, *sunhour_name;
+    int latitude_fd, elev_fd, azimuth_fd, sretr_fd, ssetr_fd, hrang_fd, ssha_fd, sunhour_fd;
     double east, east_ll, north, north_ll;
-    double north_gc, north_gc_sin, north_gc_cos;  /* geocentric latitude */
+    double north_gc, north_gc_sin, north_gc_cos; /* geocentric latitude */
     double ba2;
     int report;
     int year, month, day, hour, minutes, seconds, timezone;
-    int doy;   					/* day of year */
+    int doy; /* day of year */
     int row, col, nrows, ncols;
     int do_reproj = 0;
     struct posdata pd;
@@ -94,10 +92,13 @@ int main(int argc, char *argv[])
     G_add_keyword(_("solar"));
     G_add_keyword(_("sun energy"));
     G_add_keyword(_("sun position"));
-    module->label = _("Calculates NREL's SOLPOS parameters; solar elevation, solar azimuth, sun hours sunrise/sunset, hour angle.");
-    module->description = _("Solar elevation: the angle between the direction of the geometric center "
-			    "of the sun's apparent disk and the (idealized) horizon. "
-			    "Solar azimuth: the angle from due north in clockwise direction.");
+    module->label =
+        _("Calculates solar elevation, solar azimuth, and sun hours.");
+    module->description =
+        _("Solar elevation: the angle between the direction of the geometric "
+          "center "
+          "of the sun's apparent disk and the (idealized) horizon. "
+          "Solar azimuth: the angle from due north in clockwise direction.");
 
     parm.latitude = G_define_standard_option(G_OPT_R_OUTPUT);
     parm.latitude->key = "latitude";
@@ -152,7 +153,8 @@ int main(int argc, char *argv[])
     parm.month->type = TYPE_INTEGER;
     parm.month->required = NO;
     parm.month->label = _("Month");
-    parm.month->description = _("If not given, day is interpreted as day of the year");
+    parm.month->description =
+        _("If not given, day is interpreted as day of the year");
     parm.month->options = "1-12";
     parm.month->guisection = _("Time");
 
@@ -200,24 +202,9 @@ int main(int argc, char *argv[])
     parm.timezone->answer = "0";
     parm.timezone->guisection = _("Time");
 
-    /*
-   parm.east = G_define_option();
-    parm.east->key = "east";
-    parm.east->type = TYPE_FLOAT;
-    parm.east->required = NO;
-    parm.east->description = _("Report Easting (Default region center)");
-
-    parm.north = G_define_option();
-    parm.north->key = "north";
-    parm.north->type = TYPE_FLOAT;
-    parm.north->required = NO;
-    parm.north->description = _("Report Northing (Default region center)");
-    */
-
     report_flag = G_define_flag();
     report_flag->key = 'r';
     report_flag->description = _("Report solpos parameters for region center");
-
 
     if (G_parser(argc, argv))
       exit(EXIT_FAILURE);
@@ -235,13 +222,13 @@ int main(int argc, char *argv[])
     ssha_name = parm.ssha->answer;
     sunhour_name = parm.sunhours->answer;
     if (!report && !latitude_name && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !hrang_name  && !ssha_name && !sunhour_name)
-	G_fatal_error(_("No output requested, exiting."));
+      G_fatal_error(_("No output requested, exiting."));
 
     year = atoi(parm.year->answer);
     if (parm.month->answer)
-	month = atoi(parm.month->answer);
+        month = atoi(parm.month->answer);
     else
-	month = -1;
+        month = -1;
 
     day = atoi(parm.day->answer);
     hour = atoi(parm.hour->answer);
@@ -254,39 +241,39 @@ int main(int argc, char *argv[])
     north_gc_sin = 1;
 
     if ((G_projection() != PROJECTION_LL)) {
-	if (window.proj == 0)
-	    G_fatal_error(_("Current projection is x,y (undefined)."));
+        if (window.proj == 0)
+            G_fatal_error(_("Current projection is x,y (undefined)."));
 
-	do_reproj = 1;
+        do_reproj = 1;
 
-	/* read current projection info */
-	if ((in_proj_info = G_get_projinfo()) == NULL)
-	    G_fatal_error(_("Cannot get projection info of current location"));
+        /* read current projection info */
+        if ((in_proj_info = G_get_projinfo()) == NULL)
+            G_fatal_error(_("Cannot get projection info of current location"));
 
-	if ((in_unit_info = G_get_projunits()) == NULL)
-	    G_fatal_error(_("Cannot get projection units of current location"));
+        if ((in_unit_info = G_get_projunits()) == NULL)
+            G_fatal_error(_("Cannot get projection units of current location"));
 
-	if (pj_get_kv(&iproj, in_proj_info, in_unit_info) < 0)
-	    G_fatal_error(_("Cannot get projection key values of current location"));
+        if (pj_get_kv(&iproj, in_proj_info, in_unit_info) < 0)
+            G_fatal_error(
+                _("Cannot get projection key values of current location"));
 
-	G_free_key_value(in_proj_info);
-	G_free_key_value(in_unit_info);
+        G_free_key_value(in_proj_info);
+        G_free_key_value(in_unit_info);
 
-	/*  output projection to lat/long w/ same ellipsoid as input */
-	oproj.zone = 0;
-	oproj.meters = 1.;
-	sprintf(oproj.proj, "ll");
-	if ((oproj.pj = pj_latlong_from_proj(iproj.pj)) == NULL)
-	  G_fatal_error(_("Unable to update lat/long projection parameters"));
+        oproj.pj = NULL;
+        tproj.def = NULL;
+
+        if (GPJ_init_transform(&iproj, &oproj, &tproj) < 0)
+            G_fatal_error(_("Unable to initialize coordinate transformation"));
     }
 
     /* always init pd */
     S_init(&pd);
 
     if (month == -1)
-	doy = day;
+        doy = day;
     else
-	doy = dom2doy2(year, month, day);
+        doy = dom2doy2(year, month, day);
 
     set_solpos_time(&pd, year, 1, doy, hour, minutes, seconds, timezone);
     set_solpos_longitude(&pd, 0);
@@ -305,10 +292,10 @@ int main(int argc, char *argv[])
       east_ll = east;
 
       if (do_reproj) {
-	north_ll = north;
+        north_ll = north;
 
-	if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
-	  G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
+        if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
+          G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
       }
 
       /* geocentric latitude */
@@ -326,7 +313,7 @@ int main(int argc, char *argv[])
     }
 
     if (!latitude_name && !elev_name && !azimuth_name && !sretr_name && !ssetr_name && !ssha_name && !hrang_name && !sunhour_name)
-	return 0;
+      return 0;
 
     pd.function = S_GEOM;
     pd.function = S_ZENETR;
@@ -338,101 +325,101 @@ int main(int argc, char *argv[])
     S_solpos(&pd);
 
     if (latitude_name) {
-	if ((latitude_fd = Rast_open_new(latitude_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), latitude_name);
+      if ((latitude_fd = Rast_open_new(latitude_name, FCELL_TYPE)) < 0)
+        G_fatal_error(_("Unable to create raster map <%s>"), latitude_name);
 
-	latitudebuf = Rast_allocate_f_buf();
+      latitudebuf = Rast_allocate_f_buf();
     }
     else {
-	latitudebuf = NULL;
-	latitude_fd = -1;
+      latitudebuf = NULL;
+      latitude_fd = -1;
     }
 
     if (elev_name) {
-	if ((elev_fd = Rast_open_new(elev_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), elev_name);
+        if ((elev_fd = Rast_open_new(elev_name, FCELL_TYPE)) < 0)
+            G_fatal_error(_("Unable to create raster map <%s>"), elev_name);
 
-	elevbuf = Rast_allocate_f_buf();
+        elevbuf = Rast_allocate_f_buf();
     }
     else {
-	elevbuf = NULL;
-	elev_fd = -1;
+        elevbuf = NULL;
+        elev_fd = -1;
     }
 
     if (azimuth_name) {
-	if ((azimuth_fd = Rast_open_new(azimuth_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), azimuth_name);
+        if ((azimuth_fd = Rast_open_new(azimuth_name, FCELL_TYPE)) < 0)
+            G_fatal_error(_("Unable to create raster map <%s>"), azimuth_name);
 
-	azimuthbuf = Rast_allocate_f_buf();
+        azimuthbuf = Rast_allocate_f_buf();
     }
     else {
-	azimuthbuf = NULL;
-	azimuth_fd = -1;
+        azimuthbuf = NULL;
+        azimuth_fd = -1;
     }
 
     if (sretr_name) {
-	if ((sretr_fd = Rast_open_new(sretr_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), sretr_name);
+      if ((sretr_fd = Rast_open_new(sretr_name, FCELL_TYPE)) < 0)
+        G_fatal_error(_("Unable to create raster map <%s>"), sretr_name);
 
-	sretrbuf = Rast_allocate_f_buf();
+      sretrbuf = Rast_allocate_f_buf();
     }
     else {
-	sretrbuf = NULL;
-	sretr_fd = -1;
+      sretrbuf = NULL;
+      sretr_fd = -1;
     }
 
     if (ssetr_name) {
-	if ((ssetr_fd = Rast_open_new(ssetr_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), ssetr_name);
+      if ((ssetr_fd = Rast_open_new(ssetr_name, FCELL_TYPE)) < 0)
+        G_fatal_error(_("Unable to create raster map <%s>"), ssetr_name);
 
-	ssetrbuf = Rast_allocate_f_buf();
+      ssetrbuf = Rast_allocate_f_buf();
     }
     else {
-	ssetrbuf = NULL;
-	ssetr_fd = -1;
+      ssetrbuf = NULL;
+      ssetr_fd = -1;
     }
 
     if (hrang_name) {
-	if ((hrang_fd = Rast_open_new(hrang_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), hrang_name);
+      if ((hrang_fd = Rast_open_new(hrang_name, FCELL_TYPE)) < 0)
+        G_fatal_error(_("Unable to create raster map <%s>"), hrang_name);
 
-	hrangbuf = Rast_allocate_f_buf();
+      hrangbuf = Rast_allocate_f_buf();
     }
     else {
-	hrangbuf = NULL;
-	hrang_fd = -1;
+      hrangbuf = NULL;
+      hrang_fd = -1;
     }
 
     if (ssha_name) {
       if ((ssha_fd = Rast_open_new(ssha_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), ssha_name);
+        G_fatal_error(_("Unable to create raster map <%s>"), ssha_name);
 
-	sshabuf = Rast_allocate_f_buf();
+      sshabuf = Rast_allocate_f_buf();
     }
     else {
-	sshabuf = NULL;
-	ssha_fd = -1;
+      sshabuf = NULL;
+      ssha_fd = -1;
     }
 
     if (sunhour_name) {
-      if ((sunhour_fd = Rast_open_new(sunhour_name, FCELL_TYPE)) < 0)
-	    G_fatal_error(_("Unable to create raster map <%s>"), sunhour_name);
+        if ((sunhour_fd = Rast_open_new(sunhour_name, FCELL_TYPE)) < 0)
+            G_fatal_error(_("Unable to create raster map <%s>"), sunhour_name);
 
-	sunhourbuf = Rast_allocate_f_buf();
+        sunhourbuf = Rast_allocate_f_buf();
     }
     else {
-	sunhourbuf = NULL;
-	sunhour_fd = -1;
+        sunhourbuf = NULL;
+        sunhour_fd = -1;
     }
 
     if (elev_name && azimuth_name) {
-	G_message(_("Calculating solar elevation and azimuth..."));
+        G_message(_("Calculating solar elevation and azimuth..."));
     }
     else if (elev_name) {
-	G_message(_("Calculating solar elevation..."));
+        G_message(_("Calculating solar elevation..."));
     }
     else if (azimuth_name) {
-	G_message(_("Calculating solar azimuth..."));
+        G_message(_("Calculating solar azimuth..."));
     }
 
     nrows = Rast_window_rows();
@@ -440,152 +427,172 @@ int main(int argc, char *argv[])
 
     for (row = 0; row < nrows; row++) {
 
-	G_percent(row, nrows, 2);
+        G_percent(row, nrows, 2);
 
-	/* get cell center northing */
-	north = window.north - (row + 0.5) * window.ns_res;
-	north_ll = north;
+        /* get cell center northing */
+        north = window.north - (row + 0.5) * window.ns_res;
+        north_ll = north;
 
-	for (col = 0; col < ncols; col++) {
-	    long int retval;
+        for (col = 0; col < ncols; col++) {
+            long int retval;
 
-	    /* get cell center easting */
-	    east = window.west + (col + 0.5) * window.ew_res;
-	    east_ll = east;
+            s_elevation = s_azimuth = -1.;
 
-	    if (do_reproj) {
-		north_ll = north;
+            /* get cell center easting */
+            east = window.west + (col + 0.5) * window.ew_res;
+            east_ll = east;
 
-		if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
-		    G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
-	    }
+            if (do_reproj) {
+                north_ll = north;
+                if (GPJ_transform(&iproj, &oproj, &tproj, PJ_FWD, &east_ll,
+                                  &north_ll, NULL) < 0)
+                    G_fatal_error(
+                        _("Error in %s (projection of input coordinate pair)"),
+                        "GPJ_transform()");
+            }
 
-	    /* geocentric latitude */
-	    north_gc = atan(ba2 * tan(DEG2RAD * north_ll));
-	    north_gc_sin = sin(north_gc);
-	    roundoff(&north_gc_sin);
-	    north_gc_cos = cos(north_gc);
-	    roundoff(&north_gc_cos);
+            /* geocentric latitude */
+            north_gc = atan(ba2 * tan(DEG2RAD * north_ll));
+            north_gc_sin = sin(north_gc);
+            roundoff(&north_gc_sin);
+            north_gc_cos = cos(north_gc);
+            roundoff(&north_gc_cos);
 
-	    set_solpos_longitude(&pd, east_ll);
-	    pd.latitude = north_gc * RAD2DEG;
-	    retval = S_solpos(&pd);
-	    S_decode(retval, &pd);
-	    G_debug(3, "solpos hour angle: %.5f", pd.hrang);
+            set_solpos_longitude(&pd, east_ll);
+            pd.latitude = north_gc * RAD2DEG;
+            retval = S_solpos(&pd);
+            S_decode(retval, &pd);
+            G_debug(3, "solpos hour angle: %.5f", pd.hrang);
 
-	    if (latitude_name)
-		latitudebuf[col] = pd.latitude;
+            if (latitude_name)
+              latitudebuf[col] = pd.latitude;
 
-	    if (elev_name)
-		elevbuf[col] = pd.elevetr;
+            if (elev_name)
+                elevbuf[col] = pd.elevetr;
 
-	    if (azimuth_name) {
-	      azimuthbuf[col] = pd.azim;
-	    }
+            if (azimuth_name) {
+                azimuthbuf[col] = pd.azim;
+            }
 
-	    if (sretr_name) {
-	      sretrbuf[col] = pd.sretr;
-	    }
+            if (sretr_name) {
+              sretrbuf[col] = pd.sretr;
+            }
 
-	    if (ssetr_name) {
-	      ssetrbuf[col] = pd.ssetr;
-	    }
+            if (ssetr_name) {
+              ssetrbuf[col] = pd.ssetr;
+            }
 
-	    if (hrang_name) {
-	      hrangbuf[col] = pd.hrang;
-	    }
+            if (hrang_name) {
+              ssetrbuf[col] = pd.hrang;
+            }
 
-	    if (ssha_name) {
-	      sshabuf[col] = pd.ssha;
-	    }
+            if (ssha_name) {
+              sshabuf[col] = pd.ssha;
+            }
 
-	    if (sunhour_name) {
-		sunhourbuf[col] = (pd.ssetr - pd.sretr) / 60.;
-		if (sunhourbuf[col] > 24.)
-		    sunhourbuf[col] = 24.;
-		if (sunhourbuf[col] < 0.)
-		    sunhourbuf[col] = 0.;
-	    }
-	}
-	if (latitude_name)
-	    Rast_put_f_row(latitude_fd, latitudebuf);
-	if (elev_name)
-	    Rast_put_f_row(elev_fd, elevbuf);
-	if (azimuth_name)
-	    Rast_put_f_row(azimuth_fd, azimuthbuf);
-	if (sretr_name)
-	    Rast_put_f_row(sretr_fd, sretrbuf);
-	if (ssetr_name)
-	    Rast_put_f_row(ssetr_fd, ssetrbuf);
-	if (hrang_name)
-	    Rast_put_f_row(hrang_fd, hrangbuf);
-	if (ssha_name)
-	    Rast_put_f_row(ssha_fd, sshabuf);
-	if (sunhour_name)
-	    Rast_put_f_row(sunhour_fd, sunhourbuf);
+            if (sunhour_name) {
+              sunhourbuf[col] = (pd.ssetr - pd.sretr) / 60.;
+              if (sunhourbuf[col] > 24.)
+                sunhourbuf[col] = 24.;
+              if (sunhourbuf[col] < 0.)
+                sunhourbuf[col] = 0.;
+            }
+        }
+        if (latitude_name)
+          Rast_put_f_row(latitude_fd, latitudebuf);
+        if (elev_name)
+            Rast_put_f_row(elev_fd, elevbuf);
+        if (azimuth_name)
+            Rast_put_f_row(azimuth_fd, azimuthbuf);
+        if (sretr_name)
+          Rast_put_f_row(sretr_fd, sretrbuf);
+        if (ssetr_name)
+          Rast_put_f_row(ssetr_fd, ssetrbuf);
+        if (hrang_name)
+          Rast_put_f_row(hrang_fd, hrangbuf);
+        if (ssha_name)
+            Rast_put_f_row(ssha_fd, sshabuf);
+        if (sunhour_name)
+            Rast_put_f_row(sunhour_fd, sunhourbuf);
     }
     G_percent(1, 1, 2);
 
     if (latitude_name) {
-	Rast_close(latitude_fd);
-	/* writing history file */
-	Rast_short_history(latitude_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(latitude_name, &hist);
+      Rast_close(latitude_fd);
+      /* writing history file */
+      Rast_short_history(latitude_name, "raster", &hist);
+      Rast_command_history(&hist);
+      Rast_write_history(latitude_name, &hist);
     }
     if (elev_name) {
-	Rast_close(elev_fd);
-	/* writing history file */
-	Rast_short_history(elev_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(elev_name, &hist);
+        Rast_close(elev_fd);
+        /* writing history file */
+        Rast_short_history(elev_name, "raster", &hist);
+        Rast_command_history(&hist);
+        Rast_write_history(elev_name, &hist);
     }
     if (azimuth_name) {
-	Rast_close(azimuth_fd);
-	/* writing history file */
-	Rast_short_history(azimuth_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(azimuth_name, &hist);
+        Rast_close(azimuth_fd);
+        /* writing history file */
+        Rast_short_history(azimuth_name, "raster", &hist);
+        Rast_command_history(&hist);
+        Rast_write_history(azimuth_name, &hist);
     }
     if (sretr_name) {
-	Rast_close(sretr_fd);
-	/* writing history file */
-	Rast_short_history(sretr_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(sretr_name, &hist);
+      Rast_close(sretr_fd);
+      /* writing history file */
+      Rast_short_history(sretr_name, "raster", &hist);
+      Rast_command_history(&hist);
+      Rast_write_history(sretr_name, &hist);
     }
     if (ssetr_name) {
-	Rast_close(ssetr_fd);
-	/* writing history file */
-	Rast_short_history(ssetr_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(ssetr_name, &hist);
-    }
-    if (hrang_name) {
-	Rast_close(hrang_fd);
-	/* writing history file */
-	Rast_short_history(hrang_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(hrang_name, &hist);
+      Rast_close(ssetr_fd);
+      /* writing history file */
+      Rast_short_history(ssetr_name, "raster", &hist);
+      Rast_command_history(&hist);
+      Rast_write_history(ssetr_name, &hist);
     }
     if (ssha_name) {
-	Rast_close(ssha_fd);
-	/* writing history file */
-	Rast_short_history(ssha_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(ssha_name, &hist);
+      Rast_close(ssha_fd);
+      /* writing history file */
+      Rast_short_history(ssha_name, "raster", &hist);
+      Rast_command_history(&hist);
+      Rast_write_history(ssha_name, &hist);
+    }
+    if (hrang_name) {
+      Rast_close(hrang_fd);
+      /* writing history file */
+      Rast_short_history(hrang_name, "raster", &hist);
+      Rast_command_history(&hist);
+      Rast_write_history(hrang_name, &hist);
     }
     if (sunhour_name) {
-	Rast_close(sunhour_fd);
-	/* writing history file */
-	Rast_short_history(sunhour_name, "raster", &hist);
-	Rast_command_history(&hist);
-	Rast_write_history(sunhour_name, &hist);
+        Rast_close(sunhour_fd);
+        /* writing history file */
+        Rast_short_history(sunhour_name, "raster", &hist);
+        Rast_command_history(&hist);
+        Rast_write_history(sunhour_name, &hist);
     }
 
-    //    G_done_msg(" ");
+    G_done_msg(" ");
 
     exit(EXIT_SUCCESS);
+}
+
+void set_solpos_time(struct posdata *pdat, int year, int month, int day,
+                     int hour, int minute, int second)
+{
+    pdat->year = year;
+    pdat->month = month;
+    pdat->day = day;
+    pdat->daynum = day;
+    pdat->hour = hour;
+    pdat->minute = minute;
+    pdat->second = second;
+    pdat->timezone = 0;
+
+    pdat->time_updated = 1;
+    pdat->longitude_updated = 1;
 }
 
 void set_solpos_time(struct posdata *pdat, int year, int month, int day,
@@ -615,12 +622,12 @@ int roundoff(double *x)
 {
     /* watch out for the roundoff errors */
     if (fabs(*x) > 1.0) {
-	if (*x > 0.0)
-	    *x = 1.0;
-	else
-	    *x = -1.0;
+        if (*x > 0.0)
+            *x = 1.0;
+        else
+            *x = -1.0;
 
-	return 1;
+        return 1;
     }
 
     return 0;
