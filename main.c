@@ -27,7 +27,7 @@
 #include <grass/glocale.h>
 #include "solpos00.h"
 
-void set_solpos_time(struct posdata *, int, int, int, int, int, int, int);
+void set_solpos_time(struct posdata *pdat, int year, int month, int day, int hour, int minute, int second, int timezone);
 void set_solpos_longitude(struct posdata *, double );
 int roundoff(double *);
 
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     double east, east_ll, north, north_ll;
     double north_gc, north_gc_sin, north_gc_cos; /* geocentric latitude */
     double ba2;
-    int report;
+    int report = 0;
     int year, month, day, hour, minutes, seconds, timezone;
     int doy; /* day of year */
     int row, col, nrows, ncols;
@@ -202,9 +202,9 @@ int main(int argc, char *argv[])
     parm.timezone->answer = "0";
     parm.timezone->guisection = _("Time");
 
-    report_flag = G_define_flag();
-    report_flag->key = 'r';
-    report_flag->description = _("Report solpos parameters for region center");
+    parm.report_flag = G_define_flag();
+    parm.report_flag->key = 'r';
+    parm.report_flag->description = _("Report solpos parameters for region center");
 
     if (G_parser(argc, argv))
       exit(EXIT_FAILURE);
@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
     G_get_window(&window);
 
     /* require at least one output or report */
-    report=report_flag->answer;
+    report=parm.report_flag->answer;
     latitude_name = parm.latitude->answer;
     elev_name = parm.elev->answer;
     azimuth_name = parm.azimuth->answer;
@@ -436,8 +436,6 @@ int main(int argc, char *argv[])
         for (col = 0; col < ncols; col++) {
             long int retval;
 
-            s_elevation = s_azimuth = -1.;
-
             /* get cell center easting */
             east = window.west + (col + 0.5) * window.ew_res;
             east_ll = east;
@@ -577,22 +575,6 @@ int main(int argc, char *argv[])
     G_done_msg(" ");
 
     exit(EXIT_SUCCESS);
-}
-
-void set_solpos_time(struct posdata *pdat, int year, int month, int day,
-                     int hour, int minute, int second)
-{
-    pdat->year = year;
-    pdat->month = month;
-    pdat->day = day;
-    pdat->daynum = day;
-    pdat->hour = hour;
-    pdat->minute = minute;
-    pdat->second = second;
-    pdat->timezone = 0;
-
-    pdat->time_updated = 1;
-    pdat->longitude_updated = 1;
 }
 
 void set_solpos_time(struct posdata *pdat, int year, int month, int day,
