@@ -293,10 +293,13 @@ int main(int argc, char *argv[])
 
       if (do_reproj) {
         north_ll = north;
-
-        if (pj_do_proj(&east_ll, &north_ll, &iproj, &oproj) < 0)
-          G_fatal_error(_("Error in pj_do_proj (projection of input coordinate pair)"));
+        if (GPJ_transform(&iproj, &oproj, &tproj, PJ_FWD, &east_ll,
+                          &north_ll, NULL) < 0)
+          G_fatal_error(
+                        _("Error in %s (projection of input coordinate pair)"),
+                        "GPJ_transform()");
       }
+
 
       /* geocentric latitude */
       north_gc = atan(ba2 * tan(DEG2RAD * north_ll));
@@ -481,7 +484,7 @@ int main(int argc, char *argv[])
             }
 
             if (hrang_name) {
-              ssetrbuf[col] = pd.hrang;
+              hrangbuf[col] = pd.hrang;
             }
 
             if (ssha_name) {
